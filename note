@@ -101,3 +101,291 @@ plugin - プラグインを管理する
 --tlskey string
 --tlsverify
 ーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーーー
+
+アプリケーションのひな形を準備する
+モデルを設定する
+コントローラの作成
+ルーティングの設定
+Viewファイルの作成
+
+カレントディレクトリが/home/vagrant/work
+$ rails new アプリ名
+
+・モデルを設定する
+$ rails g model モデル名
+モデルとテーブルを同時に作成する
+$ rails g model モデル名 カラム名1:データ型1 カラム名2:データ型2 ...　　　　
+$ rails g model Blog title:string category:string body:text　　　
+指定できる型
+string : 文字列
+text : 長い文字列
+integer : 数値　整数
+float : 数値　浮動小数 
+decimal : 数値　精度の高い小数
+datetime : 日時
+timestamp : タイムスタンプ
+time : 時間
+date : 日付
+binary : バイナリデータ
+boolean : 真偽
+
+自動的に連番を割り振る（AUTOINCREMENT）
+AUTOINCREMENTは、設定したカラムに自動的に番号を割り当てる機能です。
+Railsでモデルを作成すると、自動的に「id」カラムが作成され、レコードを追加するたびに1ずつ追加されていきます。
+これは、idカラムにAUTOINCREMENTが設定されているからです。
+
+空欄を禁止する（NOT NULL）
+NOT NULLは、空のカラムを禁止する制約です。
+「ユーザには必ず電話番号を登録してほしい」場合には、電話番号のカラムにNOT NULL制約をかけます。
+NOT NULL制約がかかっているカラムに、NULL（何も入っていない状態）のまま登録や更新しようとすると、エラーになります。
+
+初期値を指定する（DEFAULT）
+DEFAULTは、データの初期値を設定する機能です。
+たとえば、telephoneカラムで「080-2222-2222」のように初期値を指定しておくと、「-」の有無を迷わずに入力しやすくなります。
+
+テーブルにレコードが登録されると、自動的にカラムに値が設定されます。
+データの初期値が決まっている場合に設定します。
+
+重複を禁止する（UNIQUE）
+UNIQUEは、他の行のカラムに同じデータが存在する場合、データ登録を行えないようにする制約です。
+たとえば、emailカラムのように、同じデータを重複して登録させたくない場合に設定します。
+
+主キー（PRIMARY KEY）
+「共通利用のデータをテーブル化する」では、ユーザテーブルのユーザIDは、必ず1つ（一意）であることを説明しました。
+PRIMARY KEY（主キー）は、テーブルのレコードを一意に特定するカラムです。
+
+ーーーーーーーーーーーーーーーーーーーーーーーーーーーーー----------------
+
+・コントローラを作成する　アクションも同時に作成する
+$ rails g controller blogs index show new edit
+----------------------------------------------------------
+
+・resourcesでルーティングを設定する
+config/routes.rb
+Rails.application.routes.draw do
+  
+  ...
+  
+  get 'todolists/:id/edit' => 'todolists#edit', as: 'edit_todolist'
+  
+end
+
+indexからdestroyまでの7つのルーティングが定義
+config/routes.rb
+Rails.application.routes.draw do
+  # For details on the DSL available within this file, see https://guides.rubyonrails.org/routing.html
+  resources :blogs
+end
+
+resources :post_images, only: [:new, :create, :index, :show]
+
+-----------------------
+バリデーションも、Railsでは簡単に行うことができます。
+今回、画像投稿に対して「必須入力」の設定が必要なので、PostImageモデルにデータ保存の記述を追加します。
+validatesで対象とする項目を指定し、入力されたデータのpresence（存在）をチェックします。データが入っていれば、trueです。
+
+app/models/post_image.rb
+class PostImage < ApplicationRecord
+    attachment :image
+    belongs_to :user
+    has_many :favorites, dependent: :destroy
+    has_many :post_comments, dependent: :destroy
+    validates :shop_name, presence: true
+    validates :image, presence: true
+    def favorited_by?(user)
+        favorites.where(user_id: user.id).exists?
+    end
+end
+
+バリデーションによって、対象のカラム（ここではimageとshop_name）にデータが入力されていなければ、saveメソッドでfalseが返されます。
+返されたバリデーションの結果を、コントローラで検出できるようにしましょう。
+
+
+返されたバリデーションの結果を、コントローラで検出できるようにしましょう。
+
+if文を用いて、saveメソッドの結果がtrueならば、これまでどおりにリダイレクトさせます。
+falseならば、画像投稿ページを再表示するように設定します。
+
+app/controllers/post_images_controller.rb
+：
+：
+    def create
+        @post_image = PostImage.new(post_image_params)
+        @post_image.user_id = current_user.id
+        if @post_image.save
+            redirect_to post_images_path
+        else
+            render :new
+        end
+    end
+：
+：
+これで、バリデーションチェックが完了しました。
+
+render :アクション名で、同じコントローラ内の別アクションのViewを表示できます。
+※コントローラ名を指定して、他のコントローラのViewを表示することも可能です。
+
+エラー分
+ <% if @post_image.errors.any? %>
+    <div id="error_explanation">
+      <h2><%= @post_image.errors.count %>件のエラーが発生しました。</h2>
+      <ul>
+      <% @post_image.errors.full_messages.each do |message| %>
+          <li><%= message %></li>
+      <% end %>
+      </ul>
+    </div>
+  <% end %>
+----------------------------------------
+      
+redirect_toの処理の流れ
+①controller（redirect_to）　→ ②HTTPリクエスト　→　③ルーティング　→　④controller　→　⑤view
+①controllerの処理でredirect_toを実行
+②redirect_toの引数で指定したURLにHTTPリクエストを実行
+③HTTPリクエストされたURLに対応するルーティング処理を実行
+④ルーティング処理に対応したcontroller、アクションが呼び出され処理を実行
+⑤処理に応じたviewのレンダリングを実行
+
+※レンダリングとはテンプレートファイルを表示することです。
+      
+renderの処理の流れ
+①controller　→　②view
+①controllerの処理でrenderを実行
+②renderのオプションで指定したviewファイルを表示する
+
+【!!要注意!!】
+
+renderを使用してviewファイルを表示したときにはactionを呼び出し処理をしているわけではありません。
+上のapp/controllers/post_images_controller.rbのrenderの記述ではpost_images/new.html.erbを表示しているだけで、newアクションを実行しているわけではありません。
+
+原則、呼び出されるViewはアクション名.html.erbです。これはRailsの設計理念である「設定より規約」によるものです。
+しかし、renderを使うことで明示的に他のViewを表示することができます。
+この際、呼び出し先のviewでインスタンス変数が使われていると、呼び出し元のアクション内で定義されていなければエラーになるので注意が必要です。
+      ーーーーーーーーーーーーーーーーーーー
+      
+app/views/post_images/show.html.erb（考え方）
+もし、投稿者 == 現在ログインしているユーザ だったら
+    削除ボタン
+終わり
+ifを用いてユーザを検証し、「投稿者」と「現在、ログインしているユーザ」が一致していなければ、削除ボタンが表示されないようにします。
+以下のように、実際のファイルに追記しましょう。
+
+app/views/post_images/show.html.erb
+<% if @post_image.user == current_user %>
+  <%= link_to "削除", post_image_path(@post_image), method: :delete %>
+<% end %>
+@post_image.userでは、投稿（@post_image）に紐づいているユーザ（.user）を取得できます。
+current_userは、devise側が用意しているヘルパーで、ログイン中のユーザを取得できます。
+この2つを == で比較し、一致していれば削除ボタンが表示されます。
+ーーーーーーーーーーーーーーーーーーーーーーーー
+
+    attachment_image_tagのオプション
+attachment_image_tagの書き方とオプションについて説明します。
+
+<%= attachment_image_tag post_image.user, :profile_image, :fill, 100, 100, format: 'jpeg', class: "img-circle pull-left profile-img", fallback: "no_image.jpg" %>
+<%= attachment_image_tag 保存先インスタンス名, :保存先カラム名, :サイズ（横幅,高さ）, 画像拡張子, 代替画像 %>
+    
+    
+post_image
+画像の保存先カラムのあるインスタンス名を指定します。
+今回は、userモデルが画像を保存しているので、@userです。
+
+:profile_image
+画像の保存先のカラム名を指定します。
+【注意】実際のカラムは「profile_image_id」ですが、_idを外したカラム名（profile_image）で指定します（refileの仕様）。
+
+:fill
+画像の縦横サイズを指定します。単位はpxです。
+今回は「:fill, 100, 100, 」で指定したので、横幅100px、高さ100pxになります。
+【注意】サイズ指定で画像が表示されない場合は、:fillによるサイズ指定ではなく、size:で指定してください。
+
+<%= attachment_image_tag @user, :profile_image,　format: 'jpeg', fallback: "no_image.jpg", size: "100x100" %>
+format:
+画像の拡張子を指定します。
+
+class:
+HTMLのclassタグを、Railsのタグ用に記述しています。
+
+fallback:
+画像データがカラムにない場合、代わりに表示する画像を指定します。
+今回は、事前に準備した画像（app/assets/imagesフォルダ内のno_image.jpgファイル）を指定しています。
+    ーーーーーーーーーーーーーーーーーー
+    
+    ails
+テーブル、モデル、カラムを作成
+( rails g model モデル名 カラム名1:データ型1 カラム名2:データ型2 …)　
+ rails g model Blog title:string category:string body:text　　　
+データベースに反映
+rails db:migrate
+
+モデルの作成
+rails g model List
+
+カラムの追加コマンド
+* $ rails g migration Addカラム名Toテーブル名 カラム名:型名
+たとえば、「lists」テーブルに文字列型の「name」というカラムを追加したい場合は、以下のようになります。
+* $ rails g migration AddNameToLists name:string
+* $ rails db:migrate
+カラムの削除コマンド
+* $ rails g migration Removeカラム名Fromテーブル名 カラム名:型名
+たとえば、さきほど追加した「name」カラムを削除したい場合は、以下のようになります。
+* $ rails g migration RemoveNameFromLists name:string
+* $ rails db:migrate
+
+(db migrate ) 
+
+
+カラム名	データ型	カラムの説明
+id	integer	投稿画像を識別するID
+shop_name	text	お店の名前
+image_id	string	画像を示すID
+caption	text	画像の説明
+user_id	integer	投稿したユーザを識別するID（Usersテーブルのidを保存する）
+title：string 短文
+Body（感想）:text　長文
+
+指定	フォームタイプ
+text_field	テキストフィールド
+email_field	メールフィールド
+password_field	パスワードフィールド
+submit	サブミットボタン
+
+
+コントローラとアクションをまとめて作成
+ rails g controller blogs index show new edit
+
+
+
+resourcesでルーティングを設定する
+ resources :model名s
+
+$Rails routes　ルーティングを確認
+
+
+
+
+
+
+コントローラの命名規則
+コントローラにも、命名規則があります。 以下のような命名規則に従った形で記述する必要があります。 コントローラ名以外は、自動的に決まります。
+種類	概要	名前例
+コントローラ名	複数形、先頭は英小文字	homes
+コントローラのクラス名	複数形、先頭は英大文字	HomesController
+ファイル名	複数形、先頭は英小文字	homes_controller.rb
+
+
+アクション名	役割
+new	データを新規作成する
+create	データを追加（保存）する
+index	データの一覧を表示する
+show	データの内容（詳細）を表示する
+edit	データを更新するためのフォームを作成する
+update	データを更新する
+destroy	データを削除する
+
+
+
+
+
+
+
